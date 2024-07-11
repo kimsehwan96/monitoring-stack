@@ -1,0 +1,123 @@
+version: '3.8'
+services:
+  systemd-exporter:
+    image: prometheuscommunity/systemd-exporter:v0.6.0
+    restart: unless-stopped
+    # Centos7 에서는 명시적으로 유저를 root, 그리고 privileged 컨테이너로 실행해야함.
+    user: root
+    privileged: true
+    volumes:
+      - /proc:/host/proc:ro
+      - /run/systemd:/run/systemd:ro
+      - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket:ro
+    command: # 추가로 관제하고자 하는 시스템데몬이 있는경우 아래에 추가
+      # - '--systemd.collector.unit-include=(nginx|mongod|docker|containerd).service'
+      - '--systemd.collector.unit-include=({{ '|'.join(exporter['systemd_exporter']['monitoring_services']) }}).service'
+    ports:
+      - 9558:9558
+  node-exporter:
+    image: prom/node-exporter:v1.6.1
+    restart: unless-stopped
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host)($$|/)'
+    ports:
+      - 9100:9100
+    environment:
+      GOMAXPROCS: '1'
+{% if exporter['process_exporter']['enabled'] %}
+  process-exporter:
+    image: ncabatoff/process-exporter:0.7.10
+    ports:
+      - 9256:9256
+    privileged: true
+    volumes:
+      - /proc:/host/proc:ro
+      - ./exporter/process-exporter.yaml:/etc/process-exporter.yaml
+    command:
+      - '-config.path=/etc/process-exporter.yaml'
+      - '--procfs=/host/proc'
+{% endif %}
+  prometheus:
+    image: prom/prometheus:v2.45.1
+    ports:
+      - 9090:9090
+    volumes:
+      - prometheus-data:/prometheus
+      - ./prometheus/config:/etc/prometheus
+    command: --config.file=/etc/prometheus/prometheus.yaml --log.level=debug
+
+  grafana:
+    image: grafana/grafana:10.2.2
+    ports:
+      - 3000:3000
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/grafana.ini:/etc/grafana/grafana.ini
+      - ./grafana-provisioning:/etc/grafana/provisioning
+      - ./grafana-dashboards:/etc/grafana/dashboards
+    environment:
+      # Plugin 들은 ,(comma)로 구분하여 환경변수에 지정 가능
+      # https://grafana.com/grafana/plugins/
+      GF_INSTALL_PLUGINS: grafana-polystat-panel
+  # grafana 의 alertmanager 를 외부것을 사용하도록 지정하는 옵션을 코드로 설정 할 수가 없음.
+  # 따라서 초기 admin 유저 정보를 이용해 external alertmanager 를 사용하도록 API call 을 함
+  grafana_init_setting:
+    image: quay.io/curl/curl:latest
+    command:
+      - sh
+      - -c
+      - |
+        echo "waiting for 60secs for grafana initializing done"
+        sleep 60
+        curl -sSf -XPOST -H "Authorization: Basic $$(echo -n "admin:admin" | base64 | tr -d '\n')" \
+        -H "Content-Type: application/json" -d '{"alertmanagersChoice": "external"}' http://grafana:3000/api/v1/ngalert/admin_config
+        echo "Set grafana main alertmanager as external done"
+    depends_on:
+      grafana:
+        condition: service_started
+  alertmanager:
+    image: prom/alertmanager:v0.25.0
+    ports:
+      - "9093:9093"
+    volumes:
+      - alertmanager-data:/data
+      - ./alertmanager/config:/config
+      - ./alertmanager/templates:/etc/alertmanager/templates
+    command:
+      - --config.file=/config/alertmanager.yaml
+      - --log.level=debug
+      - --web.external-url={{ global['external_grafana_url'] }}
+      # alertmanager 의 도메인을 왜 안찍는지 의문이 있으실 수 있는데
+      # slack.tmpl 에서 ExternalURL 변수를 사용하는데, 이게 alertmanager 에 세팅된 external URL 을 사용합니다.
+      # 근데 문제는 우리는 alertmanager 가 외부에 있긴 해도
+      # 그라파나에서 관리해서 쓰니까 .. 그러한 이유들로 인해 이렇게 찍어놓습니다.
+  cadvisor:
+    image: google/cadvisor:latest
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    expose:
+      - 8080
+ 
+   
+volumes:
+  grafana-data: {}
+  prometheus-data: {}
+  alertmanager-data: {}
+networks:
+  monitoring:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 192.168.244.0/24
+          gateway: 192.168.244.1

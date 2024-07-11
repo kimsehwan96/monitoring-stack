@@ -1,0 +1,61 @@
+global:
+  # 외부에서 grafana 접속시 사용할 URL 입니다.
+  # Nginx 등으로 Reverse Proxy를 해주세요
+  external_grafana_url: http://myserver-grafana.example.com
+  # 외부에서 grafana 접속시 사용할 도메인 입니다.
+  external_grafana_domain: myserver-grafana.example.com
+  # 이 스택이 설치될 서버의 별칭입니다. 이것을 기반으로 알람이 전송됩니다.
+  server_name: myserver
+alertmanager:
+  # Slack 알람을 위한 설정입니다.
+  slack_api_token: 'xoxb-xxxxxxx'
+  # Slack 알람을 전달할 채널입니다.
+  slack_channel: '#yout-alert-channel'
+  # 알람 발생이후 resolved 되는경우 전송될지 여부입니다. false 를 추천합니다.
+  send_resolved: false
+  # slack 으로 보내는 알람에 대한 설정값입니다.
+  route:
+    group_wait: 10s
+    group_interval: 1m
+    repeat_interval: 24h
+  alerts:
+  # 기본적으로 설치시 활성화 시킬 알람들입니다. 
+  # runbook_url 에는 해당 알람을 해결할 방법을 작성한 컨플루언스 문서를 링크합니다.
+    systemd_state_alert:
+    # systemd 서비스의 상태가 down 되었을때 알람을 발생시킵니다.
+      enabled: true
+      runbook_url: https://runbook.example.com/systemd # notion, confluence, github etcd..
+    roofs_volume_alert:
+    # Rootfs 에 대한 볼륨 사용량 % 기반 알람
+      enabled: true
+      runbook_url: https://runbook.example.com/volume
+      warning_threshold: 95
+      critical_threshold: 99
+    container_killed_alert:
+    # 컨테이너가 죽었을때 알람을 발생시킵니다.
+      enabled: true
+      runbook_url: https://runbook.example.com/container
+grafana:
+# 그라파나에대한 별도 설정은 없습니다.
+prometheus:
+# 프로메테우스에 대한 별도 설정은 없습니다. scrape_interval 이나 scrape config 추가시
+# prometheus/config/prometheus.yaml 에 추가해주세요
+exporter:
+# 메트릭을 수집해올 exporter 들에 대한 설정입니다.
+  systemd_exporter:
+    # systemd_exporter 가 수집할 대상 systemd 서비스의 이름입니다.
+    # 이 이름 + .service 로 네이밍된 시스템데몬만을 모니터링합니다.
+    # 에를들어 test.foo.service 라는 시스템 데몬을 모니터링하고싶다면
+    # - test.foo 와 같이 입력해야합니다.
+    # 기본적으로 nginx, docker, containerd 를 모니터링합니다.
+    monitoring_services:
+      - nginx
+      - docker
+      - containerd
+      # - mongod
+      # - mariadb
+  process_exporter: # 선택사항. 꼭 있을필요는 없음
+    enabled: false
+    process_commands:
+      - java
+      # - nginx

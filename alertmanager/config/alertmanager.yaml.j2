@@ -1,0 +1,42 @@
+global:
+  slack_api_url: 'https://slack.com/api/chat.postMessage'
+receivers:
+  - name: slack-notifier
+    slack_configs:
+    - channel: '{{ alertmanager['slack_channel'] }}'
+      send_resolved: {{ alertmanager['send_resolved'] | string | lower }}
+      color: '{{ '{{ template "slack.color" . }}' }}'
+      title: '{{ '{{ template "slack.title" . }}' }}'
+      text: '{{ '{{ template "slack.text" . }}' }}'
+      icon_url: https://prometheus.io/assets/favicons/android-chrome-192x192.png
+      username: alertmanager
+      http_config:
+        authorization:
+          credentials: '{{ alertmanager['slack_api_token'] }}'
+      actions:
+        - type: button
+          name: runbookbutton
+          text: 'Runbook :green_book:'
+          url: '{{ '{{ (index .Alerts 0).Annotations.runbook_url }}' }}'
+        - type: button
+          name: querybutton
+          text: 'Query :mag:'
+          url: '{{ '{{ (index .Alerts 0).GeneratorURL }}' }}'
+        - type: button
+          name: dashboardbutton
+          text: 'Dashboard :chart_with_upwards_trend:'
+          url: '{{ '{{ (index .Alerts 0).Annotations.dashboard_url }}' }}'
+        - type: button
+          name: mutebutton
+          text: 'Silence :no_bell:'
+          url: '{{ '{{ template "__alert_silence_link" . }}' }}'
+templates: ['/etc/alertmanager/templates/*.tmpl']
+route:
+  group_wait: {{ alertmanager['route']['group_wait'] }}
+  group_interval: {{ alertmanager['route']['group_interval'] }}
+  repeat_interval: {{ alertmanager['route']['repeat_interval'] }}
+  receiver: slack-notifier
+  group_by: ['job']
+  routes:
+  - match:
+      alertname: all

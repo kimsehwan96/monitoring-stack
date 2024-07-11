@@ -1,0 +1,6 @@
+alertmanager/config/alertmanager.yaml
+grafana/grafana.ini
+grafana-provisioning/alerting/alerting.yaml
+prometheus/config/prometheus.yaml
+docker-compose.yaml
+.venv/

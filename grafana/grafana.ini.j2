@@ -1,0 +1,11 @@
+[paths]
+data = /var/lib/grafana/data
+logs = /var/log/grafana
+plugins = /var/lib/grafana/plugins
+provisioning = /etc/grafana/provisioning
+[server]
+http_port = 3000
+protocol = http
+http_addr = 
+root_url = %(protocol)s://%(domain)s/
+domain = {{ global['external_grafana_domain'] }}
